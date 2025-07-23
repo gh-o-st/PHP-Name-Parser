@@ -108,9 +108,9 @@ final class FullNameParser
         if (trim($fullName) === '') {
             throw NameParsingException::emptyName();
         }
-        if (strlen($fullName) > $this->config->maxLength) {
+        if (strlen($fullName) > $this->config->getMaxLength()) {
             throw new NameParsingException(
-                "Name exceeds maximum length of {$this->config->maxLength} characters"
+                "Name exceeds maximum length of {$this->config->getMaxLength()} characters"
             );
         }
     }
@@ -244,7 +244,7 @@ final class FullNameParser
 
     private function formatName(string $name): string
     {
-        if ($this->config->preserveCase || empty($name)) {
+        if ($this->config->isPreserveCase() || empty($name)) {
             return $name;
         }
         if (str_contains($name, '-')) {

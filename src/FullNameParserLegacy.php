@@ -212,14 +212,6 @@ class FullNameParserLegacy
                     $context->middleName = implode(' ', $words);
                 }
             }
-            // Debug output
-            print_r([
-                'order' => $this->config->getOrder(),
-                'lastName' => $context->lastName,
-                'firstName' => $context->firstName,
-                'middleName' => $context->middleName ?? '',
-                'words' => $words
-            ]);
         } else {
             // Western order: GivenName [MiddleName] Surname
             $context->lastName = array_pop($words) ?? '';
