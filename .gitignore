@@ -3,3 +3,8 @@
 composer.lock
 .phpunit.result.cache
 vendor
+.log
+*.bak
+code.old
+*.cache
+*.log

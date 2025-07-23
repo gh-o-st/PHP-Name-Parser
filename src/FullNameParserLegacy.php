@@ -1,5 +1,5 @@
 <?php
-// Refactored for 8.2+
+// Refactored for 7.4+
 
 declare(strict_types=1);
 
@@ -28,19 +28,29 @@ require_once __DIR__ . '/ExtractionContext.php';
  * //   - `atla5` for closing the issue.
 */
 
-enum NameComponent: string
+
+/**
+ * Exception thrown when name parsing fails
+ */
+class NameParsingException extends InvalidArgumentException
 {
-    case PREFIX = 'prefix';
-    case FIRST_NAME = 'firstName';
-    case MIDDLE_NAME = 'middleName';
-    case LAST_NAME = 'lastName';
-    case SUFFIX = 'suffix';
-    case NICKNAME = 'nickname';
+    public static function emptyName(): self
+    {
+        return new self('Name cannot be empty or whitespace only');
+    }
+
+    public static function invalidFormat(string $name): self
+    {
+        return new self("Unable to parse name format: '{$name}'");
+    }
 }
 
-final class FullNameParser
+/**
+ * Modern Full Name Parser using PHP 8.3+ features
+ */
+class FullNameParserLegacy
 {
-    private const PREFIXES = [
+    private static $PREFIXES = [
         'mr', 'mister', 'master', 'mrs', 'missus', 'ms', 'miss', 'dr', 'rev', 
         'fr', 'sr', 'prof', 'sir', 'honorable', 'pres', 'gov', 'governor', 
         'officer', 'ofc', 'msgr', 'br', 'supt', 'rep', 'sen', 'amb', 'treas', 
@@ -48,27 +58,29 @@ final class FullNameParser
         'gen', 'the'
     ];
 
-    private const LINEAGE_SUFFIXES = [
+    private static $LINEAGE_SUFFIXES = [
         'i', 'ii', 'iii', 'iv', 'v', '1st', '2nd', '3rd', '4th', '5th', 
         'senior', 'junior', 'jr', 'sr'
     ];
 
-    private const COMPOUND_SURNAMES = [
+    private static $COMPOUND_SURNAMES = [
         'da', 'de', 'del', 'della', 'dem', 'den', 'der', 'di', 'du', 'het', 
         'la', 'onder', 'op', 'pietro', 'st', "'t", 'ten', 'ter', 'van', 
         'vanden', 'vere', 'von'
     ];
 
-    private const PROFESSIONAL_SUFFIXES = [
+    private static $PROFESSIONAL_SUFFIXES = [
         'phd', 'ph.d.', 'md', 'm.d.', 'jd', 'j.d.', 'mba', 'm.b.a.', 'ma', 
         'ms', 'bs', 'ba', 'esq', 'pe', 'rn', 'cpa', 'dds', 'd.d.s.', 'dvm', 
         'pharmd', 'edd', 'psyd', 'llm', 'll.m', 'llb', 'll.b', 'bsc', 'msc',
         // Add more as needed...
     ];
 
-    public function __construct(
-        private readonly ParserConfig $config = new ParserConfig()
-    ) {}
+    private $config;
+    public function __construct($config = null)
+    {
+        $this->config = $config ?: new ParserConfig();
+    }
 
     /**
      * Kept for backward compatibility with legacy code
@@ -85,29 +97,34 @@ final class FullNameParser
     public function parse(string $fullName): ParsedName
     {
         $this->validateInput($fullName);
+        
         $cleanName = $this->cleanInput($fullName);
         $extractionContext = new ExtractionContext($cleanName);
+        
+        // Extract components in order
         $this->extractNickname($extractionContext);
         $this->extractProfessionalSuffixes($extractionContext);
         $this->extractLineageSuffix($extractionContext);
         $this->extractPrefix($extractionContext);
         $this->extractNames($extractionContext);
+        
         return $this->buildResult($extractionContext);
     }
 
     /**
      * Static factory method for simple usage
      */
-    public static function parseQuick(string $fullName): ParsedName
+    public static function parseQuick($fullName)
     {
         return (new self())->parse($fullName);
     }
 
-    private function validateInput(string $fullName): void
+    private function validateInput($fullName)
     {
         if (trim($fullName) === '') {
             throw NameParsingException::emptyName();
         }
+
         if (strlen($fullName) > $this->config->maxLength) {
             throw new NameParsingException(
                 "Name exceeds maximum length of {$this->config->maxLength} characters"
@@ -115,69 +132,76 @@ final class FullNameParser
         }
     }
 
-    private function cleanInput(string $name): string
+    private function cleanInput($name)
     {
+        // Remove extra whitespace and normalize
         return trim(preg_replace('/\s+/', ' ', $name));
     }
 
-    private function extractNickname(ExtractionContext $context): void
+    private function extractNickname($context)
     {
-        if (preg_match('/[\("]([^)\"]+)[\)"]/', $context->workingName, $matches)) {
+        if (preg_match('/[\("]([^)\"]+)[\)\"]/', $context->workingName, $matches)) {
             $context->nickname = trim($matches[1]);
             $context->workingName = str_replace($matches[0], '', $context->workingName);
             $context->workingName = trim($context->workingName);
         }
     }
 
-    private function extractProfessionalSuffixes(ExtractionContext $context): void
+    private function extractProfessionalSuffixes($context)
     {
         $found = [];
-        foreach (self::PROFESSIONAL_SUFFIXES as $suffix) {
+        
+        foreach (self::$PROFESSIONAL_SUFFIXES as $suffix) {
             $pattern = '/[,\s]*\b' . preg_quote($suffix, '/') . '\b\.?/i';
             if (preg_match($pattern, $context->workingName, $matches)) {
                 $found[] = trim($matches[0], ', ');
                 $context->workingName = str_replace($matches[0], '', $context->workingName);
             }
         }
+        
         if (!empty($found)) {
             $context->professionalSuffixes = $found;
             $context->workingName = trim($context->workingName, ', ');
         }
     }
 
-    private function extractLineageSuffix(ExtractionContext $context): void
+    private function extractLineageSuffix($context)
     {
         $words = $this->splitIntoWords($context->workingName);
+        
         if (count($words) > 1) {
             $lastWord = $this->normalizeWord(end($words));
-            if (in_array($lastWord, self::LINEAGE_SUFFIXES, true)) {
+            
+            if (in_array($lastWord, self::$LINEAGE_SUFFIXES, true)) {
                 $context->lineageSuffix = array_pop($words);
                 $context->workingName = implode(' ', $words);
             }
         }
     }
 
-    private function extractPrefix(ExtractionContext $context): void
+    private function extractPrefix($context)
     {
         $words = $this->splitIntoWords($context->workingName);
         $prefixes = [];
+        
         while (!empty($words) && $this->isPrefix($words[0])) {
             $prefixes[] = array_shift($words);
         }
+        
         if (!empty($prefixes)) {
             $context->prefix = implode(' ', $prefixes);
             $context->workingName = implode(' ', $words);
         }
     }
 
-    private function extractNames(ExtractionContext $context): void
+    private function extractNames($context)
     {
         $words = $this->splitIntoWords($context->workingName);
         if (empty($words)) {
             return;
         }
-        if ($this->config->getOrder() === 'last-first') {
-            // Eastern order: Surname GivenName [MiddleName]
+        if ($this->config->getOrder() && $this->config->getOrder() === 'last-first') {
+            // Eastern order: LastFirst (e.g., Zhang Wei => firstName: Wei, lastName: Zhang)
             $context->lastName = array_shift($words) ?? '';
             while (!empty($words) && $this->isCompoundSurname($context->lastName)) {
                 $context->lastName .= ' ' . array_shift($words);
@@ -188,6 +212,14 @@ final class FullNameParser
                     $context->middleName = implode(' ', $words);
                 }
             }
+            // Debug output
+            print_r([
+                'order' => $this->config->getOrder(),
+                'lastName' => $context->lastName,
+                'firstName' => $context->firstName,
+                'middleName' => $context->middleName ?? '',
+                'words' => $words
+            ]);
         } else {
             // Western order: GivenName [MiddleName] Surname
             $context->lastName = array_pop($words) ?? '';
@@ -203,12 +235,13 @@ final class FullNameParser
         }
     }
 
-    private function buildResult(ExtractionContext $context): ParsedName
+    private function buildResult($context)
     {
-        $allSuffixes = array_filter([
-            $context->lineageSuffix,
-            ...$context->professionalSuffixes
-        ]);
+        // Combine all suffixes into a single array
+        $allSuffixes = array_filter(array_merge(
+            [$context->lineageSuffix],
+            $context->professionalSuffixes
+        ));
         return new ParsedName(
             $this->formatName($context->prefix),
             $this->formatName($context->firstName),
@@ -219,45 +252,46 @@ final class FullNameParser
         );
     }
 
-    private function splitIntoWords(string $text): array
+    private function splitIntoWords($text)
     {
-        return array_filter(
-            preg_split('/\s+/', trim($text)) ?: [],
-            fn(string $word) => $word !== ''
-        );
+        $words = preg_split('/\s+/', trim($text));
+        return array_filter($words ?: [], function($word) { return $word !== ''; });
     }
 
-    private function normalizeWord(string $word): string
+    private function normalizeWord($word)
     {
         return strtolower(str_replace('.', '', $word));
     }
 
-    private function isPrefix(string $word): bool
+    private function isPrefix($word)
     {
-        return in_array($this->normalizeWord($word), self::PREFIXES, true);
+        return in_array($this->normalizeWord($word), self::$PREFIXES, true);
     }
 
-    private function isCompoundSurname(string $word): bool
+    private function isCompoundSurname($word)
     {
-        return in_array(strtolower($word), self::COMPOUND_SURNAMES, true);
+        return in_array(strtolower($word), self::$COMPOUND_SURNAMES, true);
     }
 
-    private function formatName(string $name): string
+    private function formatName($name)
     {
         if ($this->config->preserveCase || empty($name)) {
             return $name;
         }
-        if (str_contains($name, '-')) {
-            return implode('-', array_map(
-                fn(string $part) => $this->formatSingleName($part),
-                explode('-', $name)
-            ));
+
+        // Handle hyphenated names
+        if (strpos($name, '-') !== false) {
+            $parts = explode('-', $name);
+            foreach ($parts as &$part) {
+                $part = $this->formatSingleName($part);
+            }
+            return implode('-', $parts);
         }
 
         // Handle compound surnames (e.g., van der Berg)
         $words = explode(' ', $name);
         foreach ($words as &$word) {
-            if (in_array(strtolower($word), self::COMPOUND_SURNAMES, true)) {
+            if (in_array(strtolower($word), self::$COMPOUND_SURNAMES, true)) {
                 $word = strtolower($word);
             } else {
                 $word = $this->formatSingleName($word);
@@ -266,24 +300,28 @@ final class FullNameParser
         return implode(' ', $words);
     }
 
-    private function formatSingleName(string $name): string
+    private function formatSingleName($name)
     {
         if (empty($name)) {
             return '';
         }
+        // Preserve intentional case patterns (McDonald, MacElroy, etc.)
         if ($this->hasInternalCaps($name)) {
             return $name;
         }
         return mb_convert_case($name, MB_CASE_TITLE, 'UTF-8');
     }
 
-    private function hasInternalCaps(string $word): bool
+    private function hasInternalCaps($word)
     {
         if (strlen($word) <= 1) {
             return false;
         }
-        return ctype_upper($word[0]) && 
-               preg_match('/[A-Z]/', substr($word, 1)) === 1;
+        return ctype_upper($word[0]) && preg_match('/[A-Z]/', substr($word, 1)) === 1;
     }
 }
 
+/**
+ * Internal context object for extraction process
+ */
+// ExtractionContext class definition removed

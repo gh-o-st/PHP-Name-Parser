@@ -1,617 +1,261 @@
 <?php
 
+declare(strict_types=1);
+
 use PHPUnit\Framework\TestCase;
+
+require_once __DIR__ . '/../src/FullNameParser.php';
+// If ParsedName, NameParsingException, ParserConfig are separate files, add require_once for each
 
 class FullNameParserTest extends TestCase
 {
-
-    /** @test */
-    public function testProSuffix()
+    public function testBasicParsing()
     {
         $parser = new FullNameParser();
-
-        $tests = [
-            'Smarty Pants Phd' => 'Phd',
-            'Smarty Pants PHD' => 'PHD',
-            'OLD MACDONALD, PHD' => 'PHD',
-        ];
-
-        $tests_no_match = [
-            'OLD MACDONALD',
-            'OLD PHDMACDONALDPHD',
-            'Prof. Ron Brown',
-        ];
-
-        foreach ($tests as $test => $expected_result) {
-            $suffixes = $parser->get_pro_suffix($test);
-            // $this->assertTrue(false !== array_search($expected_result, $suffixes));
-            $this->assertContains($expected_result, $suffixes);
-        }
-
-        foreach ($tests_no_match as $test) {
-            $suffixes = $parser->get_pro_suffix($test);
-            // Should get empty array
-            $this->assertSame($suffixes, []);
-        }
+        $parsed = $parser->parse('Dr. John Michael Smith Jr., PhD');
+        $this->assertEquals([
+            'prefix' => 'Dr.',
+            'firstName' => 'John',
+            'middleName' => 'Michael',
+            'lastName' => 'Smith',
+            'suffix' => 'Jr., PhD',
+            'nickname' => '',
+        ], $parsed->toArray());
     }
 
-    /**
-     * @dataProvider functionalNameProvider
-     */
-    public function testName($name, $expected_result)
+    public function testCompoundSurname()
     {
         $parser = new FullNameParser();
-        $split_name = $parser->parse_name($name, true);
-        $this->assertSame($expected_result, $split_name);
+        $parsed = $parser->parse('Prof. Elizabeth van der Berg III');
+        $this->assertEquals([
+            'prefix' => 'Prof.',
+            'firstName' => 'Elizabeth',
+            'middleName' => '',
+            'lastName' => 'van der Berg',
+            'suffix' => 'III',
+            'nickname' => '',
+        ], $parsed->toArray());
     }
 
-    /**
-     * @dataProvider disfunctionalNameProvider
-     */
-    public function testBadNames($name, $expected_result)
+    public function testHyphenatedLastName()
     {
         $parser = new FullNameParser();
-        $split_name = $parser->parse_name($name, true);
-        $array_equal = ($split_name === $expected_result);
-        // These tests pass because the expected results do NOT match the actual results.
-        $this->assertFalse($array_equal);
+        $parsed = $parser->parse('Mary Jane Watson-Parker');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Mary',
+            'middleName' => 'Jane',
+            'lastName' => 'Watson-Parker',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsed->toArray());
     }
 
-    public function functionalNameProvider()
+    public function testNicknameExtraction()
     {
-        return array(
-            array(
-                "Mr Anthony R Von Fange III",
-                array(
-                    "salutation"     => "Mr.",
-                    "fname"          => "Anthony",
-                    "initials"       => "R",
-                    "lname"          => "Von Fange",
-                    "lname_base"     => "Fange",
-                    "lname_compound" => "Von",
-                    "suffix"         => "III"
-                )
-            ),
-            array(
-                "J. B. Hunt",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "J.",
-                    "initials"       => "B.",
-                    "lname"          => "Hunt",
-                    "lname_base"     => "Hunt",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "J.B. Hunt",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "J.B.",
-                    "initials"       => "",
-                    "lname"          => "Hunt",
-                    "lname_base"     => "Hunt",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Edward Senior III",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Edward",
-                    "initials"       => "",
-                    "lname"          => "Senior",
-                    "lname_base"     => "Senior",
-                    "lname_compound" => "",
-                    "suffix"         => "III"
-                )
-            ),
-            array(
-                "Edward Dale Senior II",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Edward Dale",
-                    "initials"       => "",
-                    "lname"          => "Senior",
-                    "lname_base"     => "Senior",
-                    "lname_compound" => "",
-                    "suffix"         => "II"
-                )
-            ),
-            array(
-                "Dale Edward Jones Senior",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Dale Edward",
-                    "initials"       => "",
-                    "lname"          => "Jones",
-                    "lname_base"     => "Jones",
-                    "lname_compound" => "",
-                    "suffix"         => "Senior"
-                )
-            ),
-            array(
-                "Edward Senior II",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Edward",
-                    "initials"       => "",
-                    "lname"          => "Senior",
-                    "lname_base"     => "Senior",
-                    "lname_compound" => "",
-                    "suffix"         => "II"
-                )
-            ),
-            array(
-                "Dale Edward Senior II, PhD",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Dale Edward",
-                    "initials"       => "",
-                    "lname"          => "Senior",
-                    "lname_base"     => "Senior",
-                    "lname_compound" => "",
-                    "suffix"         => "II, PhD"
-                )
-            ),
-            array(
-                "Jason Rodriguez Sr.",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Jason",
-                    "initials"       => "",
-                    "lname"          => "Rodriguez",
-                    "lname_base"     => "Rodriguez",
-                    "lname_compound" => "",
-                    "suffix"         => "Sr"
-                )
-            ),
-            array(
-                "Jason Senior",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Jason",
-                    "initials"       => "",
-                    "lname"          => "Senior",
-                    "lname_base"     => "Senior",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Bill Junior",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Bill",
-                    "initials"       => "",
-                    "lname"          => "Junior",
-                    "lname_base"     => "Junior",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Sara Ann Fraser",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Sara Ann",
-                    "initials"       => "",
-                    "lname"          => "Fraser",
-                    "lname_base"     => "Fraser",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Adam",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Adam",
-                    "initials"       => "",
-                    "lname"          => "",
-                    "lname_base"     => "",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "OLD MACDONALD",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Old",
-                    "initials"       => "",
-                    "lname"          => "Macdonald",
-                    "lname_base"     => "Macdonald",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Old MacDonald",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Old",
-                    "initials"       => "",
-                    "lname"          => "MacDonald",
-                    "lname_base"     => "MacDonald",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Old McDonald",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Old",
-                    "initials"       => "",
-                    "lname"          => "McDonald",
-                    "lname_base"     => "McDonald",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Old Mc Donald",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Old MC",
-                    "initials"       => "",
-                    "lname"          => "Donald",
-                    "lname_base"     => "Donald",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Old Mac Donald",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Old Mac",
-                    "initials"       => "",
-                    "lname"          => "Donald",
-                    "lname_base"     => "Donald",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "James Van Allen",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "James",
-                    "initials"       => "",
-                    "lname"          => "Van Allen",
-                    "lname_base"     => "Allen",
-                    "lname_compound" => "Van",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Jimmy (Bubba) Smith",
-                array(
-                    "nickname"       => "Bubba",
-                    "salutation"     => "",
-                    "fname"          => "Jimmy",
-                    "initials"       => "",
-                    "lname"          => "Smith",
-                    "lname_base"     => "Smith",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Miss Jennifer Shrader Lawrence",
-                array(
-                    "salutation"     => "Ms.",
-                    "fname"          => "Jennifer Shrader",
-                    "initials"       => "",
-                    "lname"          => "Lawrence",
-                    "lname_base"     => "Lawrence",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Jonathan Smith, MD",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Jonathan",
-                    "initials"       => "",
-                    "lname"          => "Smith",
-                    "lname_base"     => "Smith",
-                    "lname_compound" => "",
-                    "suffix"         => "MD"
-                )
-            ),
-            array(
-                "Dr. Jonathan Smith",
-                array(
-                    "salutation"     => "Dr.",
-                    "fname"          => "Jonathan",
-                    "initials"       => "",
-                    "lname"          => "Smith",
-                    "lname_base"     => "Smith",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Jonathan Smith IV, PhD",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Jonathan",
-                    "initials"       => "",
-                    "lname"          => "Smith",
-                    "lname_base"     => "Smith",
-                    "lname_compound" => "",
-                    "suffix"         => "IV, PhD"
-                )
-            ),
-            array(
-                "Miss Jamie P. Harrowitz",
-                array(
-                    "salutation"     => "Ms.",
-                    "fname"          => "Jamie",
-                    "initials"       => "P.",
-                    "lname"          => "Harrowitz",
-                    "lname_base"     => "Harrowitz",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Mr John Doe",
-                array(
-                    "salutation"     => "Mr.",
-                    "fname"          => "John",
-                    "initials"       => "",
-                    "lname"          => "Doe",
-                    "lname_base"     => "Doe",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Rev. Dr John Doe",
-                array(
-                    "salutation"     => "Rev. Dr.",
-                    "fname"          => "John",
-                    "initials"       => "",
-                    "lname"          => "Doe",
-                    "lname_base"     => "Doe",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Anthony Von Fange III",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Anthony",
-                    "initials"       => "",
-                    "lname"          => "Von Fange",
-                    "lname_base"     => "Fange",
-                    "lname_compound" => "Von",
-                    "suffix"         => "III"
-                )
-            ),
-            array(
-                "Anthony Von Fange III, PhD",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Anthony",
-                    "initials"       => "",
-                    "lname"          => "Von Fange",
-                    "lname_base"     => "Fange",
-                    "lname_compound" => "Von",
-                    "suffix"         => "III, PhD"
-                )
-            ),
-            array(
-                "Smarty Pants Phd",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Smarty",
-                    "initials"       => "",
-                    "lname"          => "Pants",
-                    "lname_base"     => "Pants",
-                    "lname_compound" => "",
-                    "suffix"         => "Phd"
-                )
-            ),
-            array(
-                "Mark Peter Williams",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Mark Peter",
-                    "initials"       => "",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Mark P Williams",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Mark",
-                    "initials"       => "P",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Mark P. Williams",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Mark",
-                    "initials"       => "P.",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "M Peter Williams",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Peter",
-                    "initials"       => "M",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "M. Peter Williams",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Peter",
-                    "initials"       => "M.",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "M. P. Williams",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "M.",
-                    "initials"       => "P.",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "The Rev. Mark Williams",
-                array(
-                    "salutation"     => "Rev.",
-                    "fname"          => "Mark",
-                    "initials"       => "",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Mister Mark Williams",
-                array(
-                    "salutation"     => "Mr.",
-                    "fname"          => "Mark",
-                    "initials"       => "",
-                    "lname"          => "Williams",
-                    "lname_base"     => "Williams",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Rev Al Sharpton",
-                array(
-                    "salutation"     => "Rev.",
-                    "fname"          => "Al",
-                    "initials"       => "",
-                    "lname"          => "Sharpton",
-                    "lname_base"     => "Sharpton",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            array(
-                "Dr Ty P. Bennington iIi",
-                array(
-                    "salutation"     => "Dr.",
-                    "fname"          => "Ty",
-                    "initials"       => "P.",
-                    "lname"          => "Bennington",
-                    "lname_base"     => "Bennington",
-                    "lname_compound" => "",
-                    "suffix"         => "III"
-                )
-            ),
-            array(
-                "Prof. Ron Brown MD",
-                array(
-                    "salutation"     => "Prof.",
-                    "fname"          => "Ron",
-                    "initials"       => "",
-                    "lname"          => "Brown",
-                    "lname_base"     => "Brown",
-                    "lname_compound" => "",
-                    "suffix"         => "MD"
-                )
-            ),
-        );
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Michael "Mike" O\'Connor');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Michael',
+            'middleName' => '',
+            'lastName' => "O'Connor",
+            'suffix' => '',
+            'nickname' => 'Mike',
+        ], $parsed->toArray());
     }
 
-    public function disfunctionalNameProvider()
+    public function testSuffixesMultiple()
     {
-        return array(
-            // fails. format not yet supported
-            array(
-                "Fraser, Joshua",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Joshua",
-                    "initials"       => "",
-                    "lname"          => "Fraser",
-                    "lname_base"     => "Fraser",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            // fails. both initials should be capitalized
-            array(
-                "JB Hunt",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Jb",
-                    "initials"       => "",
-                    "lname"          => "Hunt",
-                    "lname_base"     => "Hunt",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            ),
-            // fails.  should normalize the PhD suffix
-            array(
-                "Anthony Von Fange III, PHD",
-                array(
-                    "salutation"     => "",
-                    "fname"          => "Anthony",
-                    "initials"       => "",
-                    "lname"          => "Von Fange",
-                    "lname_base"     => "Von Fange",
-                    "lname_compound" => "",
-                    "suffix"         => "III, PhD"
-                )
-            ),
-            // fails.  should treat "Silly" as the nickname or remove altogether
-            array(
-                "Not So Smarty Pants, Silly",
-                array(
-                    "nickname"       => "Silly",
-                    "salutation"     => "",
-                    "fname"          => "Not So Smarty",
-                    "initials"       => "",
-                    "lname"          => "Pants",
-                    "lname_base"     => "Pants",
-                    "lname_compound" => "",
-                    "suffix"         => ""
-                )
-            )
-        );
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Ms. Sarah J. Thompson, MD, PhD');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Sarah',
+            'middleName' => 'J.',
+            'lastName' => 'Thompson',
+            'suffix' => 'PhD, MD, Ms.',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testEmptyNameThrows()
+    {
+        $this->expectException(NameParsingException::class);
+        $parser = new FullNameParser();
+        $parser->parse('   ');
+    }
+
+    public function testMaxLengthThrows()
+    {
+        $this->expectException(NameParsingException::class);
+        $config = new ParserConfig(maxLength: 10);
+        $parser = new FullNameParser($config);
+        $parser->parse('This name is definitely longer than ten characters');
+    }
+
+    public function testPreserveCaseOption()
+    {
+        $config = new ParserConfig(preserveCase: true);
+        $parser = new FullNameParser($config);
+        $parsed = $parser->parse('mcdonald macElroy');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'mcdonald',
+            'middleName' => '',
+            'lastName' => 'macElroy',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testStrictModeOption()
+    {
+        $config = new ParserConfig(strictMode: true);
+        $parser = new FullNameParser($config);
+        $parsed = $parser->parse('Dr. John Smith');
+        $this->assertEquals('Dr. John Smith', $parsed->getFullName());
+    }
+
+    public function testDisplayNameWithNickname()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('John "Johnny" Doe');
+        $this->assertEquals('John Doe "Johnny"', $parsed->getDisplayName());
+    }
+
+    public function testDisplayNameWithoutNickname()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Jane Doe');
+        $this->assertEquals('Jane Doe', $parsed->getDisplayName());
+    }
+
+    public function testSingleName()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Cher');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => '',
+            'middleName' => '',
+            'lastName' => 'Cher',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testNameWithParenthesesNickname()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Robert (Bob) Smith');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Robert',
+            'middleName' => '',
+            'lastName' => 'Smith',
+            'suffix' => '',
+            'nickname' => 'Bob',
+        ], $parsed->toArray());
+    }
+
+    public function testNameWithMultiplePrefixes()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Dr. Prof. John Smith');
+        $this->assertEquals([
+            'prefix' => 'Dr. Prof.',
+            'firstName' => 'John',
+            'middleName' => '',
+            'lastName' => 'Smith',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testNameWithCompoundSurnameAndSuffix()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('Anna Maria de la Cruz Jr.');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Anna',
+            'middleName' => 'Maria',
+            'lastName' => 'de la Cruz',
+            'suffix' => 'Jr.',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testNameWithNoSpaces()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('A');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => '',
+            'middleName' => '',
+            'lastName' => 'A',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testNameWithSuffixOnly()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('John Smith Jr.');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'John',
+            'middleName' => '',
+            'lastName' => 'Smith',
+            'suffix' => 'Jr.',
+            'nickname' => '',
+        ], $parsed->toArray());
+    }
+
+    public function testNameOrderSwitch()
+    {
+        $name = 'Zhang Wei';
+
+        // Default: first-last
+        $parserDefault = new FullNameParser();
+        $parsedDefault = $parserDefault->parse($name);
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Zhang',
+            'middleName' => '',
+            'lastName' => 'Wei',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsedDefault->toArray());
+
+        // With order: last-first
+        $config = new ParserConfig(false, false, 1000,'last-first');
+        $parserLF = new FullNameParser($config);
+        $parsedLF = $parserLF->parse($name);
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => 'Wei',
+            'middleName' => '',
+            'lastName' => 'Zhang',
+            'suffix' => '',
+            'nickname' => '',
+        ], $parsedLF->toArray());
+    }
+
+    public function testNicknameOnly()
+    {
+        $parser = new FullNameParser();
+        $parsed = $parser->parse('"The Rock"');
+        $this->assertEquals([
+            'prefix' => '',
+            'firstName' => '',
+            'middleName' => '',
+            'lastName' => '',
+            'suffix' => '',
+            'nickname' => 'The Rock',
+        ], $parsed->toArray());
     }
 }
